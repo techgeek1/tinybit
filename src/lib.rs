@@ -25,7 +25,7 @@ pub trait Endian: Copy + Default {
     /// # Returns
     /// Ok - The number of bytes written to `out`
     /// Err - The number of bytes written before reaching the end of `out`
-    fn to_le_bytes<W: Write>(&self, buf: &mut W) -> Result<usize, io::Error> {
+    fn write_le<W: Write>(&self, buf: &mut W) -> Result<usize, io::Error> {
         // Type is a ZST, can't copy anything but it still "succeeds"
         // (why anyone would ever try this I have no idea)
         let size = mem::size_of::<Self>();
@@ -40,7 +40,7 @@ pub trait Endian: Copy + Default {
             let slice = slice::from_raw_parts(src, size);
 
             // Ensure correct encoding
-            transform_le_bytes(src, size);
+            transform_le(src, size);
 
             // Write to the buffer
             Ok(buf.write(slice)?)
@@ -55,7 +55,7 @@ pub trait Endian: Copy + Default {
     /// # Returns
     /// Ok - The number of bytes written to `out`
     /// Err - The number of bytes written before reaching the end of `out`
-    unsafe fn to_le_bytes_unchecked(&self, out: *mut u8) -> usize {
+    unsafe fn write_le_unchecked(&self, out: *mut u8) -> usize {
         // Type is a ZST, can't copy anything but it still "succeeds"
         // (why anyone would ever try this I have no idea)
         let size = mem::size_of::<Self>();
@@ -65,7 +65,7 @@ pub trait Endian: Copy + Default {
 
         let src = self as *const _ as *const u8;
         ptr::copy_nonoverlapping(src, out, size);
-        transform_le_bytes(out, size);
+        transform_le(out, size);
         
         size
     }
@@ -78,7 +78,7 @@ pub trait Endian: Copy + Default {
     /// # Returns
     /// Ok - The number of bytes written to `out`
     /// Err - The number of bytes written before reaching the end of `out`
-    fn to_be_bytes<W: Write>(&self, buf: &mut W) -> Result<usize, io::Error> {
+    fn write_be<W: Write>(&self, buf: &mut W) -> Result<usize, io::Error> {
         // Type is a ZST, can't copy anything but it still "succeeds"
         // (why anyone would ever try this I have no idea)
         let size = mem::size_of::<Self>();
@@ -93,7 +93,7 @@ pub trait Endian: Copy + Default {
             let slice = slice::from_raw_parts(src, size);
 
             // Ensure correct encoding
-            transform_be_bytes(src, size);
+            transform_be(src, size);
 
             // Write to the buffer
             Ok(buf.write(slice)?)
@@ -108,7 +108,7 @@ pub trait Endian: Copy + Default {
     /// # Returns
     /// Ok - The number of bytes written to `out`
     /// Err - The number of bytes written before reaching the end of `out`
-    unsafe fn to_be_bytes_unchecked(&self, out: *mut u8) -> usize {
+    unsafe fn write_be_unchecked(&self, out: *mut u8) -> usize {
         // Type is a ZST, can't copy anything but it still "succeeds"
         // (why anyone would ever try this I have no idea)
         let size = mem::size_of::<Self>();
@@ -118,7 +118,7 @@ pub trait Endian: Copy + Default {
 
         let src = self as *const _ as *const u8;
         ptr::copy_nonoverlapping(src, out, size);
-        transform_be_bytes(out, size);
+        transform_be(out, size);
 
         size
     }
@@ -128,7 +128,7 @@ pub trait Endian: Copy + Default {
     /// # Returns
     /// Ok with self
     /// Err when `buf` does not contain enough bytes
-    fn from_le_bytes<R: Read>(buf: &mut R) -> Result<Self, io::Error> {
+    fn read_le<R: Read>(buf: &mut R) -> Result<Self, io::Error> {
         let size = mem::size_of::<Self>();
         if size == 0 {
             return Ok(Default::default());
@@ -143,7 +143,7 @@ pub trait Endian: Copy + Default {
                 return Err(io::Error::from(io::ErrorKind::UnexpectedEof));
             }
 
-            transform_le_bytes(dst, size);
+            transform_le(dst, size);
 
             Ok(result.assume_init())
         }
@@ -155,7 +155,7 @@ pub trait Endian: Copy + Default {
     /// Assumes the following
     /// - `src` is valid and well aligned
     /// - `src` is valid for `mem::size_of::<Self>()` bytes
-    unsafe fn from_le_bytes_unchecked(src: *const u8) -> Self {
+    unsafe fn read_le_unchecked(src: *const u8) -> Self {
         let size = mem::size_of::<Self>();
         if size == 0 {
             return mem::zeroed();
@@ -166,7 +166,7 @@ pub trait Endian: Copy + Default {
 
         ptr::copy_nonoverlapping(src, dst, size);
 
-        transform_le_bytes(dst, size);
+        transform_le(dst, size);
 
         result.assume_init()
     }
@@ -176,7 +176,7 @@ pub trait Endian: Copy + Default {
     /// # Returns
     /// Ok with self
     /// Err when `buf` does not contain enough bytes
-    fn from_be_bytes<R: Read>(buf: &mut R) -> Result<Self, io::Error> {
+    fn read_be<R: Read>(buf: &mut R) -> Result<Self, io::Error> {
         let size = mem::size_of::<Self>();
         if size == 0 {
             return Ok(unsafe { mem::zeroed() });// ZST optimizes out to a noop
@@ -191,7 +191,7 @@ pub trait Endian: Copy + Default {
                 return Err(io::Error::from(io::ErrorKind::UnexpectedEof));
             }
 
-            transform_be_bytes(dst, size);
+            transform_be(dst, size);
 
             Ok(result.assume_init())
         }
@@ -203,7 +203,7 @@ pub trait Endian: Copy + Default {
     /// Assumes the following
     /// - `src` is valid and well aligned
     /// - `src` is valid for `mem::size_of::<Self>()` bytes
-    unsafe fn from_be_bytes_unchecked(src: *const u8) -> Self {
+    unsafe fn read_be_unchecked(src: *const u8) -> Self {
         let size = mem::size_of::<Self>();
         if size == 0 {
             return mem::zeroed();// ZST optimizes out to a noop
@@ -214,7 +214,7 @@ pub trait Endian: Copy + Default {
 
         ptr::copy_nonoverlapping(src, dst, size);
 
-        transform_be_bytes(dst, size);
+        transform_be(dst, size);
 
         result.assume_init()
     }
@@ -234,7 +234,7 @@ impl<T> Endian for T
 /// - `ptr` is valid and well aligned
 /// - `ptr` is valid for `len` bytes
 #[allow(unused_variables)]
-unsafe fn transform_le_bytes(ptr: *mut u8, len: usize) {
+unsafe fn transform_le(ptr: *mut u8, len: usize) {
     // Little endian systems are a noop so do nothing
 
     // Big endian systems need to flip the bytes in place to get the little endian representation
@@ -254,7 +254,7 @@ unsafe fn transform_le_bytes(ptr: *mut u8, len: usize) {
 /// Assumes the following
 /// - `ptr` is valid and well aligned
 /// - `ptr` is valid for `len` bytes
-unsafe fn transform_be_bytes(ptr: *mut u8, len: usize) {
+unsafe fn transform_be(ptr: *mut u8, len: usize) {
     // Big endian systems can just return here as it's already correct
     #[cfg(target_endian = "big")] { 
         return;
